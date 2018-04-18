@@ -10,6 +10,7 @@ results = []
 
 extract_fid = open('extracted_info.txt', 'w')
 links_visited = open('pages_visited.txt', 'w')
+pdf_visited = open('pdfs_visited.txt', 'w')
 
 
 # Extracts the phone number, email address
@@ -21,12 +22,13 @@ def extract(address, html):
         extract_fid.writelines('; '.join([address, 'PHONE', match]) + '\n')
 
     # This gets the contact info as mentioned
-    for match in re.findall(r'.*,.* \d{5}', str(html)):
+    for match in re.findall(r'[a-zA-z.]*,\s* .[a-zA-z.]*\s*\d{5}', str(html)):
         logging.debug('Found contact address: {}, address: {}'.format(match, address))
         extract_fid.writelines('; '.join([address, 'CONTACT', match]) + '\n')
 
     # This gets the mail id
-    for match in re.findall(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", str(html)):
+    for match in re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", str(html)):
+        match = match.strip()
         logging.debug('Found contact email: {}, address: {}'.format(match, address))
         extract_fid.writelines('; '.join([address, 'EMAIL', match]) + '\n')
 
@@ -45,7 +47,7 @@ def get_links(root, html):
 
 def process_address(address):
     parsed_url = parse.urlparse(address)
-    return "https://" + get_local_domain(parsed_url[1]) + parsed_url[2] + parsed_url[3] + parsed_url[4] + parsed_url[5]
+    return "http://" + get_local_domain(parsed_url[1]) + parsed_url[2] + parsed_url[3] + parsed_url[4] + parsed_url[5]
 
 
 # root is the portion to start from
@@ -62,7 +64,7 @@ def crawl(root, terminate_level=2):
     def wanted(req):
         if 'text/html' in req.headers['Content-Type']:
             return 1
-        elif 'postscript' in req.headers['Content-Type']:
+        elif 'pdf' in req.headers['Content-Type']:
             return 2
         return -1
 
@@ -89,15 +91,12 @@ def crawl(root, terminate_level=2):
         try:
             r = request.urlopen(address)
             if r.status == 200:
-                visited.add(address)
                 page_type = wanted(r)
-
-                if page_type == 1 or page_type == 2:
-                    results.append(address)
-                    logging.info('Popped off the queue: {}, Priority: {}'.format(address, priority))
+                if page_type == 2:
+                    pdf_visited.writelines(address + '\n')
+                elif page_type == 1:
                     links_visited.writelines(address + '\n')
-
-                if page_type == 1:
+                    logging.info('Popped off the queue: {}, Priority: {}'.format(address, priority))
                     html = r.read()
                     extract(address, html)
                     content_1 = BeautifulSoup(html, 'html.parser').text
@@ -105,18 +104,20 @@ def crawl(root, terminate_level=2):
                     for link, title in get_links(address, html):
                         link = process_address(link)
                         if shouldvisit(link):
-                            logging.info('Pushing on queue URL: {}'.format(link))
-                            queue.put((priority + relevance(content_1, link) + 1, link))
+                            visited.add(link)
+                            if priority + 1 < terminate_level:
+                                new_priority = priority + relevance(content_1, link) + 1
+                                queue.put((new_priority, link))
+                                logging.info('Pushed on queue URL: {} Priority: {}'.format(link,new_priority))
         except Exception as e:
             print(e, address)
 
 
 def main():
     logging.basicConfig(format='%(asctime)-15s %(levelname)s: %(message)s', level='DEBUG')
-    crawl("http://www.cs.jhu.edu/~yarowsky/cs466.html", terminate_level=3)
+    crawl(root="http://www.cs.jhu.edu/~yarowsky/cs466.html", terminate_level=3)
     extract_fid.close()
     links_visited.close()
-
 
 if __name__ == '__main__':
     main()
