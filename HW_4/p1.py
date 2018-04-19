@@ -1,6 +1,7 @@
 # IR
 from bs4 import BeautifulSoup
 from urllib import parse, request
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 
 def get_local_domain(site):
@@ -20,14 +21,16 @@ def get_links(root, html):
             if root_domain and curr_domain and curr_domain != root_domain:
                 text = ""
                 if link.string:
-                    text = link.string
+                    text = link.string.strip()
                 yield (parse.urljoin(root, link.get('href')), text)
 
 
 def main():
-    site = 'http://www.cs.jhu.edu/~yarowsky'
-    r = request.urlopen(site)
-    for l in get_links(site, r.read()):
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description='P1')
+    parser.add_argument("-site", type=str, default="http://www.cs.jhu.edu/~yarowsky", help='Site')
+    args = parser.parse_args()
+    r = request.urlopen(args.site)
+    for l in get_links(args.site, r.read()):
         print(l)
 
 

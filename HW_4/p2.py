@@ -5,6 +5,7 @@ from urllib import parse, request
 from difflib import SequenceMatcher
 import logging
 from p1 import get_local_domain
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 results = []
 
@@ -31,6 +32,7 @@ def extract(address, html):
         match = match.strip()
         logging.debug('Found contact email: {}, address: {}'.format(match, address))
         extract_fid.writelines('; '.join([address, 'EMAIL', match]) + '\n')
+    extract_fid.flush()
 
 
 # To get links
@@ -47,7 +49,9 @@ def get_links(root, html):
 
 def process_address(address):
     parsed_url = parse.urlparse(address)
-    return "http://" + get_local_domain(parsed_url[1]) + parsed_url[2] + parsed_url[3] + parsed_url[4] + parsed_url[5]
+    domain = get_local_domain(parsed_url[1])
+    max_len = address.find(domain) + len(domain)
+    return "http://" + domain + address[max_len:]
 
 
 # root is the portion to start from
@@ -108,16 +112,23 @@ def crawl(root, terminate_level=2):
                             if priority + 1 < terminate_level:
                                 new_priority = priority + relevance(content_1, link) + 1
                                 queue.put((new_priority, link))
-                                logging.info('Pushed on queue URL: {} Priority: {}'.format(link,new_priority))
+                                logging.debug('Pushed on queue URL: {} Priority: {}'.format(link, new_priority))
+            links_visited.flush()
+            pdf_visited.flush()
         except Exception as e:
             print(e, address)
 
 
 def main():
-    logging.basicConfig(format='%(asctime)-15s %(levelname)s: %(message)s', level='DEBUG')
-    crawl(root="http://www.cs.jhu.edu/~yarowsky/cs466.html", terminate_level=3)
+    logging.basicConfig(format='%(asctime)-15s %(levelname)s: %(message)s', level='INFO')
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description='Robot Crawler')
+    parser.add_argument("-root", type=str, default="http://www.cs.jhu.edu/~yarowsky/cs466.html", help='Root Site')
+    parser.add_argument("-terminate_level", type=int, default=4, help='Terminate after x recursions')
+    args = parser.parse_args()
+    crawl(root=args.root, terminate_level=args.terminate_level)
     extract_fid.close()
     links_visited.close()
+
 
 if __name__ == '__main__':
     main()
