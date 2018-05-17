@@ -1,7 +1,6 @@
 from util import load_pickle
 from util import save_pickle
 import numpy as np
-import pandas as pd
 import logging
 import matplotlib.pyplot as plt
 import datetime
@@ -10,6 +9,9 @@ import multiprocessing as mp
 
 
 def get_prices(f_name):
+    """
+    Gets the price data from the file
+    """
     import ujson as json
     with open(f_name, 'r') as fid:
         indv_points = fid.read().split('\n')
@@ -43,6 +45,10 @@ def convert_timestamp(input_str):
 
 
 def main_pkl(f_name, out_fname):
+    """
+    Converts the twitter data to pickle with each element being dictionary with keys
+    handle, text, and time
+    """
     # Read in the file
     fid = open(f_name, 'r')
     out_arr = fid.read().split('\n')
@@ -70,6 +76,9 @@ def main_pkl(f_name, out_fname):
 
 
 def handle_analyzer(f_name, img_name, out_fname):
+    """
+    Makes histogram of the handles given the pickle name (processed by main_pkl)
+    """
     # Counting tweets
     tweet_arr, handle_imp = load_pickle(f_name)['dat'], Counter()
     logging.info('Going through tweets now')
@@ -79,22 +88,10 @@ def handle_analyzer(f_name, img_name, out_fname):
     logging.info('Saved histogram with number of tweets from handle vs. freq to: {}'.format(img_name))
 
 
-def plot_save_dat(counter, out_fname, img_name, xlabel, ylabel):
-    with open(out_fname, 'w') as fid:
-        for ele in counter.most_common():
-            fid.writelines('%s  %d\n' % (ele[0], ele[1]))
-        logging.info('Wrote number of tweets from handle to file: {}'.format(out_fname))
-    plt.clf()
-    # Histogram plot
-    plt.hist(np.array(list(counter.values())), bins=100, normed=True)
-    plt.xlabel(xlabel)
-    plt.yscale('log')
-    plt.ylabel(ylabel)
-    plt.savefig(img_name)
-
-
 def hashtag_analyzer(f_name, img_name, out_fname):
-    # Counting tweets
+    """
+    Analyzes hashtags
+    """
     tweet_arr, hashtag_imp = load_pickle(f_name)['dat'], Counter()
     logging.info('Going through tweets now')
     for tweet in tweet_arr:
@@ -106,9 +103,26 @@ def hashtag_analyzer(f_name, img_name, out_fname):
     logging.info('Saved histogram with occurance of hashtag vs. freq to: {}'.format(img_name))
 
 
+def plot_save_dat(counter, out_fname, img_name, xlabel, ylabel):
+    """
+    Plots histogram of data in the counter to the file
+    """
+    with open(out_fname, 'w') as fid:
+        for ele in counter.most_common():
+            fid.writelines('%s  %d\n' % (ele[0], ele[1]))
+        logging.info('Wrote to file: {}'.format(out_fname))
+    plt.clf()
+    # Histogram plot
+    plt.hist(np.array(list(counter.values())), bins=100, normed=True)
+    plt.xlabel(xlabel)
+    plt.yscale('log')
+    plt.ylabel(ylabel)
+    plt.savefig(img_name)
+
+
 def clean_tweet(tweet):
     """
-    Return hashtags and other words separately
+    Return hashtags and the text seperately (removes the retweets) and http
     """
     word_out, hashtags = [], []
     for word in tweet.split():
@@ -121,6 +135,9 @@ def clean_tweet(tweet):
 
 
 def make_dict_pickle(f_name, out_fname):
+    """
+    Cleans the tweets and makes a set of all the words
+    """
     logging.info('Making pickle for the dictionary')
     word_set = set()
     for tweet in load_pickle(f_name)['dat']:
@@ -133,11 +150,15 @@ def make_dict_pickle(f_name, out_fname):
 
 
 def parallel_word_dict(w_list, st, end):
+    """
+    Uses spacy word vectors after loading 'en_core_web_lg' and calling for each
+    word in the w_list[st:end], called by make_wordvec_dict
+    """
     import spacy
     logging.info('Parallel process start')
     w_list = w_list[st:end]
     nlp, out_dict, count = spacy.load('en_core_web_lg'), {}, 0
-    print('loaded')
+    print('Loaded')
     for word in w_list:
         word_obj = nlp(word)
         if word_obj.has_vector:
@@ -149,6 +170,10 @@ def parallel_word_dict(w_list, st, end):
 
 
 def make_wordvec_dict(f_name, out_fname, threads):
+    """
+    Loads the pickle containing the dictionary gets word vector from
+    parallel processing it and puts into dict saved in out_fname
+    """
     # Make list of unique words
     word_list = list(load_pickle(f_name))
 
@@ -171,6 +196,9 @@ def make_wordvec_dict(f_name, out_fname, threads):
 
 
 def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, out_fname):
+    """
+    Main processing of the pickles
+    """
     import seaborn as sns
     def get_dict(fname):
         out_set, tot_count = {}, 0
@@ -181,6 +209,18 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
                     out_set[(ele.split()[0])] = tot_count
                     tot_count += 1
         return out_set
+
+    def get_label(in_dat):
+        if abs(in_dat) < 0.01:
+            return 0
+        if in_dat > 0 and in_dat > 1:
+            return 1
+        if 0 < in_dat < 1:
+            return 2
+        if -1 < in_dat < 0:
+            return 3
+        if in_dat < -1:
+            return 4
 
     # Get prices
     prices_dict = get_prices(f_name=prices_fname)
@@ -196,6 +236,9 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
     num = 0
     for ele in main_arr:
         num += 1
+
+        ## Gets the time step
+
         try:
             # To test when jump more than 1 timestep
             loop_more_than_once = False
@@ -214,30 +257,35 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
             logging.warning('Ran out of the prices.txt file at tweet index: {}, time index: {}'.format(num, time_idx))
             break
 
-        # Assert that the time stamp on tweet before the current time
-        assert (ele['time'] < prices_dict[time_idx]['time'])
+        # If atleast half an hour away then include in set
+        time_diff = prices_dict[time_idx]['time'] - ele['time']
+        assert (time_diff > 0)
+        if time_diff < 1800:
+            continue
 
+        # Get the data, check if hashtag is in array
         words, hashtag_arr = clean_tweet(tweet=ele['text'])
         hashtag_arr = [hashtag_dict[hashtag] for hashtag in hashtag_arr if hashtag in hashtag_dict]
+
+        # Add number for the handle if present
         handle_num = None
         if ele['handle'] in handle_dict:
             handle_num = handle_dict[ele['handle']]
         curr_dat.append((words, [handle_num, hashtag_arr]))
-        curr_lab = prices_dict[time_idx]['change']
+        curr_lab = get_label(float(prices_dict[time_idx]['change']))
+
     # Ensure that the length of the data and the number of labels are same
     assert (len(dat_arr) == len(lab_arr) == len(time_arr))
     logging.info('Total Samples: {}'.format(len(dat_arr)))
-
-
     logging.info('Printing out stats')
-    # Get stats regarding number of tweets per time step and timestep data
+    # # Get stats regarding number of tweets per time step and timestep data
     timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
     number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
 
     plt.clf()
     logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-                        timestep_out.mean(), timestep_out.max(), timestep_out.min(),timestep_out.std()))
-    sns.set(),plt.hist(timestep_out, bins=100, normed=True)
+        timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
+    sns.set(), plt.hist(timestep_out, bins=100, normed=True)
     plt.xlabel('Time Step'), plt.ylabel('Probablity')
     plt.savefig('data/timestep.png')
 
@@ -256,25 +304,26 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
     plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
     plt.savefig('data/tweets_density.png')
 
-    save_pickle({'data': np.asarray(dat_arr), 'labels': np.asarray(lab_arr)},out_fname)
+    save_pickle({'data': np.asarray(dat_arr), 'labels': np.asarray(lab_arr)}, out_fname)
     logging.info('Saved Pickle To: {}'.format(out_fname))
 
-def make_splits(input_pkl, test_split = 0.1, val_split = 0.1):
+
+def make_splits(input_pkl, test_split=0.1, val_split=0.1):
     """
     Makes the split in dataset(prod given pickle name
     """
-    if (test_split > 1) or (val_split > 1) or (test_split + val_split > 1) or (test_split <= 0) or (val_split <=0):
+    if (test_split > 1) or (val_split > 1) or (test_split + val_split > 1) or (test_split <= 0) or (val_split <= 0):
         logging.warning('Check the input for make splits, quitting')
         exit()
 
     main_dict = load_pickle(input_pkl)
     data, labels = main_dict['data'], main_dict['labels']
     idx_arr = np.random.choice(len(data), len(data))
-    data,labels = data[idx_arr],labels[idx_arr]
+    data, labels = data[idx_arr], labels[idx_arr]
 
     # Find the split sizes
-    val_split = int(len(data)*val_split)
-    test_split = val_split + int(len(data)*test_split)
+    val_split = int(len(data) * val_split)
+    test_split = val_split + int(len(data) * test_split)
 
     # Make and save the splits
     save_pickle({'data': data[:val_split], 'labels': labels[:val_split]}, 'data/val.pkl')
@@ -289,7 +338,7 @@ logging.basicConfig(level='INFO')
 # hashtag_analyzer("data/process_dat.pkl", "data/hashtag_stats.png", 'data/hashtag_stats.txt')
 # make_dict_pickle("data/process_dat.pkl", "data/word_dict.pkl")
 # make_wordvec_dict("data/word_dict.pkl", "data/wordvectors.pkl", 20)
-# make_main_process_pkl(prices_fname="data/prices.txt", word_pkl="data/process_dat.pkl",
-#                       hashtag_fname="data/hashtag_200.txt", handle_fname="data/handle_200.txt",
-#                       out_fname="data/processed_readynn.pkl")
-make_splits(input_pkl='data/processed_readynn.pkl',test_split=0.1, val_split=0.1)
+make_main_process_pkl(prices_fname="data/prices.txt", word_pkl="data/process_dat.pkl",
+                      hashtag_fname="data/hashtag_200.txt", handle_fname="data/handle_200.txt",
+                      out_fname="data/processed_readynn.pkl")
+make_splits(input_pkl='data/processed_readynn.pkl', test_split=0.1, val_split=0.1)
