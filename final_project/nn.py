@@ -51,13 +51,17 @@ class custom_callback(Callback):
             if self.loader.looping:
                 break
             pred = self.model.predict(in_dat).astype(np.float32)
-            pred_label = np.argmax(pred,axis=1).flatten()
-            ac_label = np.argmax(out_dat.astype(np.float32),axis=1).flatten()
+            # pred_label = np.argmax(pred, axis=1).flatten()
+            pred_label = np.round(pred).astype(np.float32).flatten()
+            ac_label = np.round(out_dat.astype(np.float32)).astype(np.float32).flatten()
+            # pred_label = np.argmax(pred,axis=1).flatten()
+            # ac_label = np.argmax(out_dat.astype(np.float32),axis=1).flatten()
 
             # Make array of actual and in labels
+            # print(pred_label.shape, ac_label.shape)
             pred_inlabel = np.concatenate((pred_inlabel, pred_label))
             pred_aclabel = np.concatenate((pred_aclabel, ac_label))
-            assert(pred_inlabel.shape[0] == pred_aclabel.shape[0])
+            assert (pred_inlabel.shape[0] == pred_aclabel.shape[0])
 
         # Current loss
         val_acc = np.mean(pred_aclabel == pred_inlabel)
@@ -86,14 +90,15 @@ class Loader(Sequence):
         self.handle_num = handle_num
         self.looping = False
 
-    def get_data(self, labels, data,max_num_tweet = 300):
+    def get_data(self, labels, data, max_num_tweet=300):
         # Initialize data structures
-        main_dat, handle_arr, hashtag_arr,hist_arr = [], [], [],[]
-        lab_arr = np.zeros((data.shape[0], 5))
+        main_dat, handle_arr, hashtag_arr, hist_arr = [], [], [], []
+        lab_arr = np.zeros((data.shape[0], 1))
 
         for idx in range(data.shape[0]):
             # Make the one hot encoding
-            lab_arr[idx, labels[idx]] = 1
+            if labels[idx] == 1:
+                lab_arr[idx, 0] = 1
             # Initialize the arrays
             time_main, time_handle, time_hash_tags = [], [], []
             hist_arr.append(np.expand_dims(data[idx][-1], axis=0))
@@ -143,7 +148,8 @@ class Loader(Sequence):
             main_dat.append(np.expand_dims(np.concatenate(time_main), axis=0))
             handle_arr.append(np.expand_dims(np.concatenate(time_handle), axis=0))
             hashtag_arr.append(np.expand_dims(np.concatenate(time_hash_tags), axis=0))
-        return [np.concatenate(main_dat), np.concatenate(handle_arr), np.concatenate(hashtag_arr),np.concatenate(hist_arr,axis=0)], lab_arr
+        return [np.concatenate(main_dat), np.concatenate(handle_arr), np.concatenate(hashtag_arr),
+                np.concatenate(hist_arr, axis=0)], lab_arr
 
     def __getitem__(self, item):
         # Adjust the overall index if done with file
@@ -177,7 +183,7 @@ class main_nn:
         input_tweet = Input(shape=(self.num_tweets, 30, 300), name='in_tweet')
         hashtag = Input(shape=(self.num_tweets, 200), name='hashtags')
         handle = Input(shape=(self.num_tweets, 200), name='handles')
-        prev_info = Input(shape=(500,2), name='history')
+        prev_info = Input(shape=(200, 2), name='history')
 
         # Convolution Architecture for tweets
         k1_raw = TimeDistributed(Conv1D(filters=self.shapes[3], kernel_size=1, padding='same', name='K1'))(input_tweet)
@@ -209,12 +215,12 @@ class main_nn:
         dropout_int_layer = TimeDistributed(Dropout(rate=0.2))(int_layer)
         in_lstm = TimeDistributed(Dense(units=100, activation='relu'))(dropout_int_layer)
 
-        b2_raw = Conv1D(filters=self.shapes[3]*2, kernel_size=4, padding='same', name='b2')(in_lstm)
-        b3_raw = Conv1D(filters=self.shapes[3]*2, kernel_size=8, padding='same', name='b3')(in_lstm)
-        b4_raw = Conv1D(filters=self.shapes[4]*2, kernel_size=16, padding='same', name='b4')(in_lstm)
-        b5_raw = Conv1D(filters=self.shapes[5]*2, kernel_size=32, padding='same', name='b5')(in_lstm)
-        b6_raw = Conv1D(filters=self.shapes[6]*2, kernel_size=64, padding='same', name='b6')(in_lstm)
-        b8_raw = Conv1D(filters=self.shapes[8]*2, kernel_size=128, padding='same', name='b8')(in_lstm)
+        b2_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=4, padding='same', name='b2')(in_lstm)
+        b3_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=8, padding='same', name='b3')(in_lstm)
+        b4_raw = Conv1D(filters=self.shapes[4] * 2, kernel_size=16, padding='same', name='b4')(in_lstm)
+        b5_raw = Conv1D(filters=self.shapes[5] * 2, kernel_size=32, padding='same', name='b5')(in_lstm)
+        b6_raw = Conv1D(filters=self.shapes[6] * 2, kernel_size=64, padding='same', name='b6')(in_lstm)
+        b8_raw = Conv1D(filters=self.shapes[8] * 2, kernel_size=128, padding='same', name='b8')(in_lstm)
         b2_max = GlobalMaxPool1D()(b2_raw)
         b3_max = GlobalMaxPool1D()(b3_raw)
         b4_max = GlobalMaxPool1D()(b4_raw)
@@ -223,15 +229,17 @@ class main_nn:
         b8_max = GlobalMaxPool1D()(b8_raw)
 
         price_lstm = LSTM(units=100)(prev_info)
-        input_lin = keras.layers.concatenate([b2_max, b3_max, b4_max, b5_max, b6_max, b8_max, price_lstm], name='Combining_Layersk')
+        input_lin = keras.layers.concatenate([b2_max, b3_max, b4_max, b5_max, b6_max, b8_max, price_lstm],
+                                             name='Combining_Layersk')
         out_linear1 = Dense(units=300, activation='relu', name='Linear_1a')(input_lin)
         out_linear1_d = Dropout(rate=0.1)(out_linear1)
         out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear1_d)
         out_linear4 = Dense(units=40, name='Linear_2')(out_linear3)
-        out = Dense(units=5, name='Final_Layer',activation='softmax')(out_linear4)
-        model = keras.Model(inputs=[input_tweet, hashtag, handle,prev_info], outputs=out)
-        model.compile(loss='binary_crossentropy', optimizer=self.optim, metrics=[categorical_accuracy])
+        out = Dense(units=1, name='Final_Layer', activation='sigmoid')(out_linear4)
+        model = keras.Model(inputs=[input_tweet, hashtag, handle, prev_info], outputs=out)
+        model.compile(loss='binary_crossentropy', optimizer=self.optim)
         return model
+
 
 def main():
     nn = main_nn(num_tweets=300, optimizer=optimizers.Adam())
