@@ -25,7 +25,7 @@ def get_prices(f_name):
             prev_time = main_dict['timestamp']
             # Store the data
             store_data.append({'change': main_dict['ticker']['change'], 'time': main_dict['timestamp'],
-                               'price': main_dict['ticker']['price']})
+                               'price': main_dict['ticker']['price'], 'volume':main_dict['ticker']['volume']})
     logging.info('Completed getting prices from: {}, entries: {}'.format(f_name, len(store_data)))
     return store_data
 
@@ -211,16 +211,24 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
         return out_set
 
     def get_label(in_dat):
-        if abs(in_dat) < 0.01:
+        if abs(in_dat) < 0.45:
             return 0
-        if in_dat > 0 and in_dat > 1:
+        if in_dat > 0 and in_dat > 1.5:
             return 1
-        if 0 < in_dat < 1:
+        if 0 < in_dat < 1.5:
             return 2
-        if -1 < in_dat < 0:
+        if -1.6 < in_dat < 0:
             return 3
-        if in_dat < -1:
+        if in_dat < -1.6:
             return 4
+
+    def get_vol_price_dat(idx):
+        if idx < 500:
+            return None
+        vol_arr = np.array([float(prices_dict[c_idx]['volume']) for c_idx in range(idx - 500, idx)])
+        price_arr = np.array([float(prices_dict[c_idx]['price']) for c_idx in range(idx - 500, idx)])
+        vol_arr, price_arr = np.expand_dims(vol_arr,axis=0), np.expand_dims(price_arr,axis=0)
+        return np.concatenate((vol_arr,price_arr), axis=0).transpose()
 
     # Get prices
     prices_dict = get_prices(f_name=prices_fname)
@@ -237,29 +245,25 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
     for ele in main_arr:
         num += 1
 
-        ## Gets the time step
-
-        try:
-            # To test when jump more than 1 timestep
-            loop_more_than_once = False
-            # If current time is higher then jump to next entry, update the arrays
-            while ele['time'] >= prices_dict[time_idx]['time']:
-                if loop_more_than_once:
-                    logging.warning('Jumping one extra timestep for: {}'.format(ele['time']))
-                elif len(curr_dat) != 0:
-                    time_arr.append(prices_dict[time_idx]['time'])
-                    lab_arr.append(curr_lab)
-                    dat_arr.append(curr_dat)
-                curr_dat, curr_lab = [], None
-                time_idx += 1
-                loop_more_than_once = True
-        except IndexError:
-            logging.warning('Ran out of the prices.txt file at tweet index: {}, time index: {}'.format(num, time_idx))
-            break
-
+        # If current time is higher then jump to next entry, update the arrays
+        if ele['time'] >= prices_dict[time_idx]['time']:
+            # Only if volume information is contained
+            combined_out = get_vol_price_dat(time_idx - 1)
+            if combined_out is not None:
+                time_arr.append(prices_dict[time_idx]['time'])
+                lab_arr.append(curr_lab)
+                print(combined_out.shape)
+                curr_dat.append(combined_out)
+                dat_arr.append(curr_dat)
+            curr_dat, curr_lab = [], None
+            time_idx += 1
+            if time_idx == len(prices_dict):
+                logging.warning(
+                    'Ran out of the prices.txt file at tweet index: {}, time index: {}'.format(num, time_idx))
+                break
         # If atleast half an hour away then include in set
         time_diff = prices_dict[time_idx]['time'] - ele['time']
-        assert (time_diff > 0)
+        assert (0 < time_diff < 7200)
         if time_diff < 1800:
             continue
 
@@ -279,30 +283,35 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
     logging.info('Total Samples: {}'.format(len(dat_arr)))
     logging.info('Printing out stats')
     # # Get stats regarding number of tweets per time step and timestep data
-    timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
-    number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
-
-    plt.clf()
-    logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-        timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
-    sns.set(), plt.hist(timestep_out, bins=100, normed=True)
-    plt.xlabel('Time Step'), plt.ylabel('Probablity')
-    plt.savefig('data/timestep.png')
-
-    plt.clf()
-    logging.info('number_tweets out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-        number_tweets.mean(), number_tweets.max(), number_tweets.min(), number_tweets.std()))
-    sns.set(), plt.hist(number_tweets, bins=100, normed=True)
-    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    plt.savefig('data/tweets.png')
-
-    plt.clf()
-    density = number_tweets / timestep_out
-    logging.info('density out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-        density.mean(), density.max(), density.min(), density.std()))
-    sns.set(), plt.hist(density, bins=100, normed=True)
-    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    plt.savefig('data/tweets_density.png')
+    # timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
+    # number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
+    #
+    # plt.clf()
+    # logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+    #     timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
+    # sns.set(), plt.hist(timestep_out, bins=100, normed=True)
+    # plt.xlabel('Time Step'), plt.ylabel('Probablity')
+    # plt.savefig('data/timestep.png')s
+    #
+    # plt.clf()
+    # logging.info('number_tweets out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+    #     number_tweets.mean(), number_tweets.max(), number_tweets.min(), number_tweets.std()))
+    # sns.set(), plt.hist(number_tweets, bins=100, normed=True)
+    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    # plt.savefig('data/tweets.png')
+    #
+    # plt.clf()
+    # density = number_tweets / timestep_out
+    # logging.info('density out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+    #     density.mean(), density.max(), density.min(), density.std()))
+    # sns.set(), plt.hist(density, bins=100, normed=True)
+    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    # plt.savefig('data/tweets_density.png')
+    #
+    # plt.clf()
+    # sns.set(), plt.hist(lab_arr, bins=5, normed=True)
+    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    # plt.savefig('data/label_dist.png')
 
     save_pickle({'data': np.asarray(dat_arr), 'labels': np.asarray(lab_arr)}, out_fname)
     logging.info('Saved Pickle To: {}'.format(out_fname))
@@ -332,7 +341,7 @@ def make_splits(input_pkl, test_split=0.1, val_split=0.1):
 
 
 logging.basicConfig(level='INFO')
-# get_prices("data/prices.txt")
+get_prices("data/prices.txt")
 # main_pkl("data/tweets_raw.txt", "data/process_dat.pkl")
 # handle_analyzer("data/process_dat.pkl", "data/handle_stats.png", 'data/handle_stats.txt')
 # hashtag_analyzer("data/process_dat.pkl", "data/hashtag_stats.png", 'data/hashtag_stats.txt')

@@ -52,7 +52,7 @@ class custom_callback(Callback):
                 break
 
             # Make array of actual and in labels
-            pred_inlabel = np.concatenate((pred_inlabel, self.model.predict(in_dat).flatten().astype(np.float32)))
+            pred_inlabel = np.concatenate((pred_inlabel, self.model.predict(in_dat).astype(np.float32)))
             pred_aclabel = np.concatenate((pred_aclabel, out_dat.flatten().astype(np.float32)))
 
         # Current loss
@@ -86,14 +86,17 @@ class Loader(Sequence):
 
     def get_data(self, labels, data,max_num_tweet = 300):
         # Initialize data structures
-        main_dat, handle_arr, hashtag_arr = [], [], []
+        main_dat, handle_arr, hashtag_arr,hist_arr = [], [], [],[]
         lab_arr = np.zeros((data.shape[0], 5))
 
         for idx in range(data.shape[0]):
             # Make the one hot encoding
             lab_arr[idx, labels[idx]] = 1
+            # Initialize the arrays
             time_main, time_handle, time_hash_tags = [], [], []
-            for idx, segs in enumerate(data[idx]):
+            hist_arr.append(np.expand_dims(data[idx][-1], axis=0))
+            # Loop over all the segments in the data
+            for idx, segs in enumerate(data[idx][:-1]):
                 if idx > max_num_tweet:
                     continue
                 # Get the word list and the supplementary data list
@@ -138,7 +141,7 @@ class Loader(Sequence):
             main_dat.append(np.expand_dims(np.concatenate(time_main), axis=0))
             handle_arr.append(np.expand_dims(np.concatenate(time_handle), axis=0))
             hashtag_arr.append(np.expand_dims(np.concatenate(time_hash_tags), axis=0))
-        return [np.concatenate(main_dat), np.concatenate(handle_arr), np.concatenate(hashtag_arr)], lab_arr
+        return [np.concatenate(main_dat), np.concatenate(handle_arr), np.concatenate(hashtag_arr),np.concatenate(hist_arr,axis=0)], lab_arr
 
     def __getitem__(self, item):
         # Adjust the overall index if done with file
@@ -172,6 +175,7 @@ class main_nn:
         input_tweet = Input(shape=(self.num_tweets, 30, 300), name='in_tweet')
         hashtag = Input(shape=(self.num_tweets, 200), name='hashtags')
         handle = Input(shape=(self.num_tweets, 200), name='handles')
+        prev_info = Input(shape=(500,2), name='history')
 
         # Convolution Architecture
         k1_raw = TimeDistributed(Conv1D(filters=self.shapes[3], kernel_size=1, padding='same', name='K1'))(input_tweet)
@@ -189,55 +193,37 @@ class main_nn:
         k6_max = TimeDistributed(GlobalMaxPool1D())(k6_raw)
         k8_max = TimeDistributed(GlobalMaxPool1D())(k8_raw)
 
-        # Handle and hashtag processing and reshaping it
+        # Handle and hashtag processing
         handle_10_vec = TimeDistributed(Dense(units=10, activation='relu'))(handle)
         hashtag_10_vec = TimeDistributed(Dense(units=10, activation='relu'))(hashtag)
 
-        # Output layer
+        # Concatenation
         out_conv = keras.layers.concatenate(
             [k1_max, k2_max, k3_max, k4_max, k5_max, k6_max, k8_max, handle_10_vec, hashtag_10_vec],
             name='Combining_Layers')
+        # Get the input for the LSTM
         int_layer = TimeDistributed(Dense(units=150, activation='relu'))(out_conv)
         dropout_int_layer = TimeDistributed(Dropout(rate=0.4))(int_layer)
         in_lstm = TimeDistributed(Dense(units=100, activation='relu'))(dropout_int_layer)
 
-        # b1_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=2, padding='same', name='b1')(in_lstm)
-        # b2_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=4, padding='same', name='b2')(in_lstm)
-        # b3_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=6, padding='same', name='b3')(in_lstm)
-        # b4_raw = Conv1D(filters=self.shapes[4] * 2, kernel_size=8, padding='same', name='b4')(in_lstm)
-        # b5_raw = Conv1D(filters=self.shapes[5] * 2, kernel_size=10, padding='same', name='b5')(in_lstm)
-        # b6_raw = Conv1D(filters=self.shapes[6] * 2, kernel_size=20, padding='same', name='b6')(in_lstm)
-        # b8_raw = Conv1D(filters=self.shapes[8] * 2, kernel_size=30, padding='same', name='b8')(in_lstm)
-        # b1_max = GlobalMaxPool1D()(b1_raw)
-        # b2_max = GlobalMaxPool1D()(b2_raw)
-        # b3_max = GlobalMaxPool1D()(b3_raw)
-        # b4_max = GlobalMaxPool1D()(b4_raw)
-        # b5_max = GlobalMaxPool1D()(b5_raw)
-        # b6_max = GlobalMaxPool1D()(b6_raw)
-        # b8_max = GlobalMaxPool1D()(b8_raw)
-        #
-        # out_lstm = keras.layers.concatenate([b1_max, b2_max, b3_max, b4_max, b5_max, b6_max, b8_max],
-        #                                     name='final_combine')
-        #
-        # # Combined all layers
-        # # in_lstm_reshaped = Reshape(target_shape=(self.num_tweets, 50),name='Reshape_Conv')(in_lstm)
-        out_linear0 = LSTM(units=300, name='LSTM')(in_lstm)
-        #
+        #  Combined all layers
+        out_lstm = LSTM(units=150, name='LSTM')(in_lstm)
         # # Linear + Output
-        # out_linear0 = Dense(units=500, activation='relu', name='Linear_1a')(out_lstm)
-        # out_linear0_d = Dropout(rate=0.5)(out_linear0)
-        out_linear2 = Dense(units=250, activation='relu', name='Linear_1d')(out_linear0)
-        # out_linear2_d = Dropout(rate=0.5)(out_linear2)
-        out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear2)
-        # out_linear3_d = Dropout(rate=0.5)(out_linear3)
-        out_linear4 = Dense(units=40, name='Linear_2')(out_linear3)
+        out_linear0 = Dense(units=300, activation='relu', name='Linear_1a')(out_lstm)
+        price_lstm = LSTM(units=100)(prev_info)
+        out_comb = keras.layers.concatenate([price_lstm, out_linear0],name='final_combine')
+        out_linear2 = Dense(units=250, activation='relu', name='Linear_1d')(out_comb)
+        out_linear2_d = Dropout(rate=0.3)(out_linear2)
+        out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear2_d)
+        out_linear3_d = Dropout(rate=0.3)(out_linear3)
+        out_linear4 = Dense(units=40, name='Linear_2')(out_linear3_d)
         out = Dense(units=5, name='Final_Layer')(out_linear4)
-        model = keras.Model(inputs=[input_tweet, hashtag, handle], outputs=out)
+        model = keras.Model(inputs=[input_tweet, hashtag, handle,prev_info], outputs=out)
         model.compile(loss='binary_crossentropy', optimizer=self.optim, metrics=[categorical_accuracy])
         return model
 
 def main():
-    nn = main_nn(num_tweets=500, optimizer=optimizers.Adam())
+    nn = main_nn(num_tweets=300, optimizer=optimizers.Adam())
     nn.produce_model()
     main_loader = Loader(pkl_name='data/processed_readynn.pkl', batch_size=36, max_word=30,
                          word_dict_pkl='data/wordvectors.pkl', hash_tag_num=200, handle_num=200)
