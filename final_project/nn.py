@@ -179,7 +179,7 @@ class main_nn:
         handle = Input(shape=(self.num_tweets, 200), name='handles')
         prev_info = Input(shape=(500,2), name='history')
 
-        # Convolution Architecture
+        # Convolution Architecture for tweets
         k1_raw = TimeDistributed(Conv1D(filters=self.shapes[3], kernel_size=1, padding='same', name='K1'))(input_tweet)
         k2_raw = TimeDistributed(Conv1D(filters=self.shapes[3], kernel_size=2, padding='same', name='K2'))(input_tweet)
         k3_raw = TimeDistributed(Conv1D(filters=self.shapes[3], kernel_size=3, padding='same', name='K3'))(input_tweet)
@@ -203,22 +203,31 @@ class main_nn:
         out_conv = keras.layers.concatenate(
             [k1_max, k2_max, k3_max, k4_max, k5_max, k6_max, k8_max, handle_10_vec, hashtag_10_vec],
             name='Combining_Layers')
-        # Get the input for the LSTM
+
+        # Main layer
         int_layer = TimeDistributed(Dense(units=150, activation='relu'))(out_conv)
-        dropout_int_layer = TimeDistributed(Dropout(rate=0.4))(int_layer)
+        dropout_int_layer = TimeDistributed(Dropout(rate=0.2))(int_layer)
         in_lstm = TimeDistributed(Dense(units=100, activation='relu'))(dropout_int_layer)
 
-        #  Combined all layers
-        out_lstm = LSTM(units=150, name='LSTM')(in_lstm)
-        # # Linear + Output
-        out_linear0 = Dense(units=300, activation='relu', name='Linear_1a')(out_lstm)
+        b2_raw = Conv1D(filters=self.shapes[3]*2, kernel_size=4, padding='same', name='b2')(in_lstm)
+        b3_raw = Conv1D(filters=self.shapes[3]*2, kernel_size=8, padding='same', name='b3')(in_lstm)
+        b4_raw = Conv1D(filters=self.shapes[4]*2, kernel_size=16, padding='same', name='b4')(in_lstm)
+        b5_raw = Conv1D(filters=self.shapes[5]*2, kernel_size=32, padding='same', name='b5')(in_lstm)
+        b6_raw = Conv1D(filters=self.shapes[6]*2, kernel_size=64, padding='same', name='b6')(in_lstm)
+        b8_raw = Conv1D(filters=self.shapes[8]*2, kernel_size=128, padding='same', name='b8')(in_lstm)
+        b2_max = GlobalMaxPool1D()(b2_raw)
+        b3_max = GlobalMaxPool1D()(b3_raw)
+        b4_max = GlobalMaxPool1D()(b4_raw)
+        b5_max = GlobalMaxPool1D()(b5_raw)
+        b6_max = GlobalMaxPool1D()(b6_raw)
+        b8_max = GlobalMaxPool1D()(b8_raw)
+
         price_lstm = LSTM(units=100)(prev_info)
-        out_comb = keras.layers.concatenate([price_lstm, out_linear0],name='final_combine')
-        out_linear2 = Dense(units=250, activation='relu', name='Linear_1d')(out_comb)
-        out_linear2_d = Dropout(rate=0.3)(out_linear2)
-        out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear2_d)
-        out_linear3_d = Dropout(rate=0.3)(out_linear3)
-        out_linear4 = Dense(units=40, name='Linear_2')(out_linear3_d)
+        input_lin = keras.layers.concatenate([b2_max, b3_max, b4_max, b5_max, b6_max, b8_max, price_lstm], name='Combining_Layersk')
+        out_linear1 = Dense(units=300, activation='relu', name='Linear_1a')(input_lin)
+        out_linear1_d = Dropout(rate=0.1)(out_linear1)
+        out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear1_d)
+        out_linear4 = Dense(units=40, name='Linear_2')(out_linear3)
         out = Dense(units=5, name='Final_Layer',activation='softmax')(out_linear4)
         model = keras.Model(inputs=[input_tweet, hashtag, handle,prev_info], outputs=out)
         model.compile(loss='binary_crossentropy', optimizer=self.optim, metrics=[categorical_accuracy])
