@@ -252,7 +252,6 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
             if combined_out is not None:
                 time_arr.append(prices_dict[time_idx]['time'])
                 lab_arr.append(curr_lab)
-                print(combined_out.shape)
                 curr_dat.append(combined_out)
                 dat_arr.append(curr_dat)
             curr_dat, curr_lab = [], None
@@ -283,35 +282,35 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
     logging.info('Total Samples: {}'.format(len(dat_arr)))
     logging.info('Printing out stats')
     # # Get stats regarding number of tweets per time step and timestep data
-    # timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
-    # number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
-    #
-    # plt.clf()
-    # logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-    #     timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
-    # sns.set(), plt.hist(timestep_out, bins=100, normed=True)
-    # plt.xlabel('Time Step'), plt.ylabel('Probablity')
-    # plt.savefig('data/timestep.png')s
-    #
-    # plt.clf()
-    # logging.info('number_tweets out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-    #     number_tweets.mean(), number_tweets.max(), number_tweets.min(), number_tweets.std()))
-    # sns.set(), plt.hist(number_tweets, bins=100, normed=True)
-    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    # plt.savefig('data/tweets.png')
-    #
-    # plt.clf()
-    # density = number_tweets / timestep_out
-    # logging.info('density out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-    #     density.mean(), density.max(), density.min(), density.std()))
-    # sns.set(), plt.hist(density, bins=100, normed=True)
-    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    # plt.savefig('data/tweets_density.png')
-    #
-    # plt.clf()
-    # sns.set(), plt.hist(lab_arr, bins=5, normed=True)
-    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    # plt.savefig('data/label_dist.png')
+    timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
+    number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
+
+    plt.clf()
+    logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+        timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
+    sns.set(), plt.hist(timestep_out, bins=100, normed=True)
+    plt.xlabel('Time Step'), plt.ylabel('Probablity')
+    plt.savefig('data/timestep.png')
+
+    plt.clf()
+    logging.info('number_tweets out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+        number_tweets.mean(), number_tweets.max(), number_tweets.min(), number_tweets.std()))
+    sns.set(), plt.hist(number_tweets, bins=100, normed=True)
+    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    plt.savefig('data/tweets.png')
+
+    plt.clf()
+    density = number_tweets / timestep_out
+    logging.info('density out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+        density.mean(), density.max(), density.min(), density.std()))
+    sns.set(), plt.hist(density, bins=100, normed=True)
+    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    plt.savefig('data/tweets_density.png')
+
+    plt.clf()
+    sns.set(), plt.hist(lab_arr, bins=5, normed=True)
+    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    plt.savefig('data/label_dist.png')
 
     save_pickle({'data': np.asarray(dat_arr), 'labels': np.asarray(lab_arr)}, out_fname)
     logging.info('Saved Pickle To: {}'.format(out_fname))
@@ -350,4 +349,4 @@ get_prices("data/prices.txt")
 make_main_process_pkl(prices_fname="data/prices.txt", word_pkl="data/process_dat.pkl",
                       hashtag_fname="data/hashtag_200.txt", handle_fname="data/handle_200.txt",
                       out_fname="data/processed_readynn.pkl")
-make_splits(input_pkl='data/processed_readynn.pkl', test_split=0.1, val_split=0.1)
+make_splits(input_pkl='data/processed_readynn.pkl', test_split=0.97, val_split=0.01)

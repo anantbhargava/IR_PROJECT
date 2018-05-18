@@ -7,12 +7,6 @@ import nn
 
 
 def main_run(args):
-    # tr_loader = nn.Loader('data/train.pkl', batch_size=12, max_word=args.max_w, word_dict_pkl=args.word_dict,
-    #                       hash_tag_num=args.hash_tag, handle_num=args.handle_num)
-    # for _ in range(100):
-    #     tr_loader.__getitem__(20)
-    # exit()
-    # Get the model
     model_class = nn.main_nn(num_tweets=args.num_tweets,optimizer=keras.optimizers.Adam(lr=args.lr))
     model = model_class.produce_model()
     print(model.summary())

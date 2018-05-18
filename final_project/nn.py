@@ -50,21 +50,23 @@ class custom_callback(Callback):
             in_dat, out_dat = self.loader.__getitem__(0)
             if self.loader.looping:
                 break
+            pred = self.model.predict(in_dat).astype(np.float32)
+            pred_label = np.argmax(pred,axis=1).flatten()
+            ac_label = np.argmax(out_dat.astype(np.float32),axis=1).flatten()
 
             # Make array of actual and in labels
-            pred_inlabel = np.concatenate((pred_inlabel, self.model.predict(in_dat).astype(np.float32)))
-            pred_aclabel = np.concatenate((pred_aclabel, out_dat.flatten().astype(np.float32)))
+            pred_inlabel = np.concatenate((pred_inlabel, pred_label))
+            pred_aclabel = np.concatenate((pred_aclabel, ac_label))
+            assert(pred_inlabel.shape[0] == pred_aclabel.shape[0])
 
         # Current loss
-        curr_loss = np.mean((pred_aclabel - pred_inlabel) ** 2)
+        val_acc = np.mean(pred_aclabel == pred_inlabel)
         with open(self.val_fname, 'a') as fid:
-            fid.writelines('{} {} \n'.format(curr_loss, self.epoch))
-        with open(self.val_fname, 'a') as fid:
-            fid.writelines('{} {} \n'.format(logs.get('loss'), self.epoch))
-        if curr_loss > self.val_thresh:
+            fid.writelines('{} {} \n'.format(val_acc, self.epoch))
+        if val_acc > self.val_thresh:
             f_name = self.file_prefix + '_' + str(self.epoch) + '.model'
             self.model.save_weights(f_name)
-            logging.info('\n Wrote model val loss: {} , File Name: {} '.format(curr_loss, f_name))
+            logging.info('\n Wrote model val loss: {} , File Name: {} '.format(val_acc, f_name))
         with open(self.file_prefix + '_' + str(self.epoch) + '.txt', 'w') as fid:
             for idx in range(pred_inlabel.shape[0]):
                 fid.writelines('{} {} \n'.format(pred_inlabel[idx], pred_aclabel[idx]))
@@ -217,7 +219,7 @@ class main_nn:
         out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear2_d)
         out_linear3_d = Dropout(rate=0.3)(out_linear3)
         out_linear4 = Dense(units=40, name='Linear_2')(out_linear3_d)
-        out = Dense(units=5, name='Final_Layer')(out_linear4)
+        out = Dense(units=5, name='Final_Layer',activation='softmax')(out_linear4)
         model = keras.Model(inputs=[input_tweet, hashtag, handle,prev_info], outputs=out)
         model.compile(loss='binary_crossentropy', optimizer=self.optim, metrics=[categorical_accuracy])
         return model
