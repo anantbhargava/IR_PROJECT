@@ -1,7 +1,5 @@
 import logging
-import keras
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-import numpy as np
 import keras
 import nn
 
@@ -14,7 +12,7 @@ def main_run(args):
 
     # Get the weights for the model
     if args.load is not None:
-        model.load_weights(args.load)
+        model = keras.models.load_model(args.load)
         logging.info('Loaded weights from file: {}'.format(args.load))
     if args.test:
         # Loading the dataloader

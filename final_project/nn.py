@@ -1,30 +1,31 @@
 import keras
-from keras.layers import Dense, Conv1D, Dropout, Input, LSTM, Reshape, Flatten, TimeDistributed, MaxPooling1D, Lambda, \
-    GlobalMaxPool1D
-from keras.layers.merge import Concatenate
+from keras.layers import Dense, Conv1D, Dropout, Input, LSTM, TimeDistributed, GlobalMaxPool1D
 from keras import optimizers
 from keras.utils import Sequence
-from random import shuffle
-import glob
 from util import load_pickle
 import numpy as np
 import logging
 from keras.callbacks import Callback
-from keras.metrics import categorical_accuracy
 
 
 def get_test_acc(dataloader, model):
     """
     Get the test accuracy given the dataloader and the model
     """
-    curr_loss = np.array([])
+    curr_loss,pred_aclabel, pred_inlabel = np.array([]), np.array([]),np.array([])
     while True:
-        in_dat, out_dat = dataloader.loader.__getitem__()
+        in_dat, out_dat = dataloader.__getitem__(0)
         if dataloader.looping:
             break
-        pred_dat = model.predict(in_dat)
-        curr_loss = np.concatenate((curr_loss, (pred_dat - out_dat) ** 2))
-    logging.info('Test Loss: {}'.format(np.mean(curr_loss)))
+        pred = model.predict(in_dat)
+        pred_label = np.round(pred).astype(np.float32).flatten()
+        ac_label = np.round(out_dat.astype(np.float32)).astype(np.float32).flatten()
+        # Make array of actual and in labels
+        pred_inlabel = np.concatenate((pred_inlabel, pred_label))
+        pred_aclabel = np.concatenate((pred_aclabel, ac_label))
+        assert (pred_inlabel.shape[0] == pred_aclabel.shape[0])
+
+    logging.info('Test Accuracy: {}'.format(np.mean(pred_aclabel == pred_inlabel)))
 
 
 class custom_callback(Callback):
@@ -45,35 +46,42 @@ class custom_callback(Callback):
         logging.debug('CALLBACK CALLED')
         self.epoch += 1
         self.loader.looping, self.loader.overall_idx = False, 0
-        pred_aclabel, pred_inlabel = np.array([]), np.array([])
+        ac_arr, pred_arr = np.array([]), np.array([])
         while True:
-            in_dat, out_dat = self.loader.__getitem__(0)
             if self.loader.looping:
                 break
-            pred = self.model.predict(in_dat).astype(np.float32)
-            # pred_label = np.argmax(pred, axis=1).flatten()
-            pred_label = np.round(pred).astype(np.float32).flatten()
-            ac_label = np.round(out_dat.astype(np.float32)).astype(np.float32).flatten()
-            # pred_label = np.argmax(pred,axis=1).flatten()
-            # ac_label = np.argmax(out_dat.astype(np.float32),axis=1).flatten()
+            in_dat, out_dat = self.loader.__getitem__(0)
+            pred = self.model.predict(in_dat).astype(np.float32).flatten()
+            ac_label = (out_dat.astype(np.float32)).astype(np.float32).flatten()
+            # Make array of actual and pred data
+            pred_arr = np.concatenate((pred_arr, pred))
+            ac_arr = np.concatenate((ac_arr, ac_label))
+            assert (pred_arr.shape[0] == ac_arr.shape[0])
 
-            # Make array of actual and in labels
-            # print(pred_label.shape, ac_label.shape)
-            pred_inlabel = np.concatenate((pred_inlabel, pred_label))
-            pred_aclabel = np.concatenate((pred_aclabel, ac_label))
-            assert (pred_inlabel.shape[0] == pred_aclabel.shape[0])
-
-        # Current loss
-        val_acc = np.mean(pred_aclabel == pred_inlabel)
+        # Get the accuracy
+        pred_label = np.round(pred_arr).astype(np.float32).flatten()
+        val_acc = np.mean(ac_arr == pred_label)
         with open(self.val_fname, 'a') as fid:
-            fid.writelines('{} {} \n'.format(val_acc, self.epoch))
+            fid.writelines('{} {} \n'.format(self.epoch, val_acc))
+
+        # If accuracy more than validation save the model
         if val_acc > self.val_thresh:
             f_name = self.file_prefix + '_' + str(self.epoch) + '.model'
-            self.model.save_weights(f_name)
-            logging.info('\n Wrote model val loss: {} , File Name: {} '.format(val_acc, f_name))
+            self.model.save(f_name)
+            logging.info('\n Wrote model val accuracy: {} , File Name: {} '.format(val_acc, f_name))
+
+        # Printing loss to seperate file
+        logging.debug('MAX AND MIN: {} {}'.format(np.max(pred_arr),np.min(pred_arr)))
+        # print(pred_arr.shape)
+        loss = -np.mean(np.concatenate((np.log(pred_arr)[ac_arr == 0],np.log(1 - pred_arr)[ac_arr == 1])))
+        logging.info('Validation loss: {}'.format(loss))
+        with open(self.val_fname + '_val_loss.txt', 'a') as fid:
+            fid.writelines('{} {} \n'.format(loss, epoch))
+
+        # Prining actual values
         with open(self.file_prefix + '_' + str(self.epoch) + '.txt', 'w') as fid:
-            for idx in range(pred_inlabel.shape[0]):
-                fid.writelines('{} {} \n'.format(pred_inlabel[idx], pred_aclabel[idx]))
+            for idx in range(pred_arr.shape[0]):
+                fid.writelines('{} {} \n'.format(pred_arr[idx], ac_arr[idx]))
 
 
 class Loader(Sequence):
@@ -138,7 +146,6 @@ class Loader(Sequence):
                 # Add to the main array
                 time_handle.append(handle)
                 time_hash_tags.append(hash_tag)
-                # print(handle.shape)
 
             time_main += [np.zeros((1, self.max_word, 300))] * (max_num_tweet - len(time_main))
             time_handle += [np.zeros((1, self.handle_num))] * (max_num_tweet - len(time_handle))
@@ -183,7 +190,7 @@ class main_nn:
         input_tweet = Input(shape=(self.num_tweets, 30, 300), name='in_tweet')
         hashtag = Input(shape=(self.num_tweets, 200), name='hashtags')
         handle = Input(shape=(self.num_tweets, 200), name='handles')
-        prev_info = Input(shape=(200, 2), name='history')
+        prev_info = Input(shape=(500, 2), name='history')
 
         # Convolution Architecture for tweets
         k1_raw = TimeDistributed(Conv1D(filters=self.shapes[3], kernel_size=1, padding='same', name='K1'))(input_tweet)
@@ -215,12 +222,12 @@ class main_nn:
         dropout_int_layer = TimeDistributed(Dropout(rate=0.2))(int_layer)
         in_lstm = TimeDistributed(Dense(units=100, activation='relu'))(dropout_int_layer)
 
-        b2_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=4, padding='same', name='b2')(in_lstm)
-        b3_raw = Conv1D(filters=self.shapes[3] * 2, kernel_size=8, padding='same', name='b3')(in_lstm)
-        b4_raw = Conv1D(filters=self.shapes[4] * 2, kernel_size=16, padding='same', name='b4')(in_lstm)
-        b5_raw = Conv1D(filters=self.shapes[5] * 2, kernel_size=32, padding='same', name='b5')(in_lstm)
-        b6_raw = Conv1D(filters=self.shapes[6] * 2, kernel_size=64, padding='same', name='b6')(in_lstm)
-        b8_raw = Conv1D(filters=self.shapes[8] * 2, kernel_size=128, padding='same', name='b8')(in_lstm)
+        b2_raw = Conv1D(filters=self.shapes[3]*2, kernel_size=4, padding='same', name='b2')(in_lstm)
+        b3_raw = Conv1D(filters=self.shapes[3]*2, kernel_size=8, padding='same', name='b3')(in_lstm)
+        b4_raw = Conv1D(filters=self.shapes[4]*2, kernel_size=16, padding='same', name='b4')(in_lstm)
+        b5_raw = Conv1D(filters=self.shapes[5]*2, kernel_size=32, padding='same', name='b5')(in_lstm)
+        b6_raw = Conv1D(filters=self.shapes[6]*2, kernel_size=64, padding='same', name='b6')(in_lstm)
+        b8_raw = Conv1D(filters=self.shapes[8]*2, kernel_size=128, padding='same', name='b8')(in_lstm)
         b2_max = GlobalMaxPool1D()(b2_raw)
         b3_max = GlobalMaxPool1D()(b3_raw)
         b4_max = GlobalMaxPool1D()(b4_raw)
@@ -230,7 +237,7 @@ class main_nn:
 
         price_lstm = LSTM(units=100)(prev_info)
         input_lin = keras.layers.concatenate([b2_max, b3_max, b4_max, b5_max, b6_max, b8_max, price_lstm],
-                                             name='Combining_Layersk')
+                                             name='Combining_Layers_Final')
         out_linear1 = Dense(units=300, activation='relu', name='Linear_1a')(input_lin)
         out_linear1_d = Dropout(rate=0.1)(out_linear1)
         out_linear3 = Dense(units=80, activation='relu', name='Linear_1')(out_linear1_d)

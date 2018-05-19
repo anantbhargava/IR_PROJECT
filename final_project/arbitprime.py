@@ -21,7 +21,7 @@ def exchanges(printexchange, printdata):
 def coinlist():
     g = requests.get("https://www.cryptocompare.com/api/data/coinlist/")
     data = g.json()
-    print(data[BTC])
+    print(data)
 
 def topexchange(param1,param2):
     site = "https://min-api.cryptocompare.com/data/top/exchanges?fsym="+param2+"&tsym="+param1

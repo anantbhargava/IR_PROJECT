@@ -1,8 +1,4 @@
 import pickle
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-
 
 def load_pickle(path):
     with open(path, 'rb') as f:

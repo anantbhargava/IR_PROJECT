@@ -99,7 +99,7 @@ def hashtag_analyzer(f_name, img_name, out_fname):
         for word in main_text:
             if word[0] == '#':
                 hashtag_imp[word] += 1
-    plot_save_dat(hashtag_imp, out_fname, img_name, 'Number of reptitions', 'Probablity')
+    plot_save_dat(hashtag_imp, out_fname, img_name, 'Number of occurances', 'Probablity')
     logging.info('Saved histogram with occurance of hashtag vs. freq to: {}'.format(img_name))
 
 
@@ -133,7 +133,6 @@ def clean_tweet(tweet):
             word_out.append(word)
     return word_out, hashtags
 
-
 def make_dict_pickle(f_name, out_fname):
     """
     Cleans the tweets and makes a set of all the words
@@ -155,17 +154,13 @@ def parallel_word_dict(w_list, st, end):
     word in the w_list[st:end], called by make_wordvec_dict
     """
     import spacy
-    logging.info('Parallel process start')
     w_list = w_list[st:end]
     nlp, out_dict, count = spacy.load('en_core_web_lg'), {}, 0
-    print('Loaded')
     for word in w_list:
         word_obj = nlp(word)
         if word_obj.has_vector:
             out_dict[word] = word_obj.vector
         count += 1
-        if count % 500 == 0:
-            print(count)
     return out_dict
 
 
@@ -194,33 +189,32 @@ def make_wordvec_dict(f_name, out_fname, threads):
     save_pickle(out_dict, out_fname)
     logging.info('Made Dictionary Using Spacy')
 
+def get_dict(fname):
+    """
+    Gets data from the file fname , especially the first column
+    :param fname:
+    :return:
+    """
+    out_set, tot_count = {}, 0
+    with open(fname, 'r') as fid:
+        word_arr = fid.read().split('\n')
+        for ele in word_arr:
+            if len(ele) > 0:
+                out_set[(ele.split()[0])] = tot_count
+                tot_count += 1
+    return out_set
 
 def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, out_fname):
     """
     Main processing of the pickles
     """
     import seaborn as sns
-    def get_dict(fname):
-        out_set, tot_count = {}, 0
-        with open(fname, 'r') as fid:
-            word_arr = fid.read().split('\n')
-            for ele in word_arr:
-                if len(ele) > 0:
-                    out_set[(ele.split()[0])] = tot_count
-                    tot_count += 1
-        return out_set
+
 
     def get_label(in_dat):
-        if abs(in_dat) < 0.45:
-            return 0
-        if in_dat > 0 and in_dat > 1.5:
+        if in_dat > 0:
             return 1
-        if 0 < in_dat < 1.5:
-            return 2
-        if -1.6 < in_dat < 0:
-            return 3
-        if in_dat < -1.6:
-            return 4
+        return 0
 
     def get_vol_price_dat(idx):
         if idx < 500:
@@ -260,6 +254,7 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
                 logging.warning(
                     'Ran out of the prices.txt file at tweet index: {}, time index: {}'.format(num, time_idx))
                 break
+
         # If atleast half an hour away then include in set
         time_diff = prices_dict[time_idx]['time'] - ele['time']
         assert (0 < time_diff < 7200)
@@ -282,36 +277,36 @@ def make_main_process_pkl(prices_fname, word_pkl, hashtag_fname, handle_fname, o
     logging.info('Total Samples: {}'.format(len(dat_arr)))
     logging.info('Printing out stats')
     # # Get stats regarding number of tweets per time step and timestep data
-    timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
-    number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
-
-    plt.clf()
-    logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-        timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
-    sns.set(), plt.hist(timestep_out, bins=100, normed=True)
-    plt.xlabel('Time Step'), plt.ylabel('Probablity')
-    plt.savefig('data/timestep.png')
-
-    plt.clf()
-    logging.info('number_tweets out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-        number_tweets.mean(), number_tweets.max(), number_tweets.min(), number_tweets.std()))
-    sns.set(), plt.hist(number_tweets, bins=100, normed=True)
-    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    plt.savefig('data/tweets.png')
-
-    plt.clf()
-    density = number_tweets / timestep_out
-    logging.info('density out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
-        density.mean(), density.max(), density.min(), density.std()))
-    sns.set(), plt.hist(density, bins=100, normed=True)
-    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    plt.savefig('data/tweets_density.png')
-
-    plt.clf()
-    sns.set(), plt.hist(lab_arr, bins=5, normed=True)
-    plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
-    plt.savefig('data/label_dist.png')
-
+    # timestep_out = np.asarray([time_arr[idx] - time_arr[idx - 1] for idx in range(1, len(time_arr))])
+    # number_tweets = np.asarray([len(dat_arr[idx]) for idx in range(1, len(time_arr))])
+    #
+    # plt.clf()
+    # logging.info('Timestep out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+    #     timestep_out.mean(), timestep_out.max(), timestep_out.min(), timestep_out.std()))
+    # sns.set(), plt.hist(timestep_out, bins=100, normed=True)
+    # plt.xlabel('Time Step'), plt.ylabel('Probablity')
+    # plt.savefig('data/timestep.png')
+    #
+    # plt.clf()
+    # logging.info('number_tweets out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+    #     number_tweets.mean(), number_tweets.max(), number_tweets.min(), number_tweets.std()))
+    # sns.set(), plt.hist(number_tweets, bins=100, normed=True)
+    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    # plt.savefig('data/tweets.png')
+    #
+    # plt.clf()
+    # density = number_tweets / timestep_out
+    # logging.info('density out stats, Mean: {}, Max: {}, Min: {}, Std: {}'.format(
+    #     density.mean(), density.max(), density.min(), density.std()))
+    # sns.set(), plt.hist(density, bins=100, normed=True)
+    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    # plt.savefig('data/tweets_density.png')
+    #
+    # plt.clf()
+    # sns.set(), plt.hist(lab_arr, bins=5, normed=True)
+    # plt.xlabel('Number tweets per timestep'), plt.ylabel('Probablity')
+    # plt.savefig('data/label_dist.png')
+    #
     save_pickle({'data': np.asarray(dat_arr), 'labels': np.asarray(lab_arr)}, out_fname)
     logging.info('Saved Pickle To: {}'.format(out_fname))
 
@@ -328,7 +323,7 @@ def make_splits(input_pkl, test_split=0.1, val_split=0.1):
     data, labels = main_dict['data'], main_dict['labels']
     idx_arr = np.random.choice(len(data), len(data))
     data, labels = data[idx_arr], labels[idx_arr]
-
+    print(len(data[0][-1]))
     # Find the split sizes
     val_split = int(len(data) * val_split)
     test_split = val_split + int(len(data) * test_split)
@@ -338,15 +333,81 @@ def make_splits(input_pkl, test_split=0.1, val_split=0.1):
     save_pickle({'data': data[val_split:test_split], 'labels': labels[val_split:test_split]}, 'data/test.pkl')
     save_pickle({'data': data[test_split:], 'labels': labels[test_split:]}, 'data/train.pkl')
 
+### PREPROCESSING FOR THE DATA REAL TIME###
+def prod_clean(tweet_arr,hashtag_fname="data/hashtag_200.txt",handle_fname="data/handle_200.txt",handle_num=200,hash_tag_num=200):
 
-logging.basicConfig(level='INFO')
-get_prices("data/prices.txt")
-# main_pkl("data/tweets_raw.txt", "data/process_dat.pkl")
-# handle_analyzer("data/process_dat.pkl", "data/handle_stats.png", 'data/handle_stats.txt')
-# hashtag_analyzer("data/process_dat.pkl", "data/hashtag_stats.png", 'data/hashtag_stats.txt')
-# make_dict_pickle("data/process_dat.pkl", "data/word_dict.pkl")
-# make_wordvec_dict("data/word_dict.pkl", "data/wordvectors.pkl", 20)
-make_main_process_pkl(prices_fname="data/prices.txt", word_pkl="data/process_dat.pkl",
-                      hashtag_fname="data/hashtag_200.txt", handle_fname="data/handle_200.txt",
-                      out_fname="data/processed_readynn.pkl")
-make_splits(input_pkl='data/processed_readynn.pkl', test_split=0.97, val_split=0.01)
+    # Maximum number of words
+    max_word = 30
+    tweet_arr = tweet_arr[:300]
+    tweet_arr = tweet_arr + [('', '')] * (300 - len(tweet_arr))
+    logging.info('Twitter Data length: {}'.format(len(tweet_arr)))
+    # Getting data
+    hashtag_dict, handle_dict = get_dict(hashtag_fname), get_dict(handle_fname)
+
+    # Making set and the arrays
+    word_arr, hashtag_arr, handles,word_set = [], [], [],set()
+
+    # Make set of all words in the tweets along with the hashtags and handles
+    for tweet in tweet_arr:
+        word, hashtags = clean_tweet(tweet[1])
+        hashtag_arr.append([hashtag_dict[hashtag] for hashtag in hashtags if hashtag in hashtag_dict])
+        handles.append(handle_dict.get(tweet[0],None))
+        word_arr.append(word)
+    assert(len(handles) == len(word_arr) == len(hashtag_arr))
+
+    # Get the tweet words, and find their vectors
+    for tweet_words in word_arr:
+        for word in tweet_words:
+            word_set.add(word)
+    word_dict = parallel_word_dict(list(word_set),0,len(word_set))
+
+    logging.info('Got the dictionary with the word vectors')
+
+    # Intermediate arrays
+    int_wordarr, int_hashtags, int_handles = [], [], []
+    for idx in range(len(word_arr)):
+        # Getting array of words, resizing it to be max_word,300
+        np_word_arr = [np.expand_dims(word_dict[word], 0) for word in word_arr[idx] if word in word_dict]
+        if len(np_word_arr) > max_word:
+            np_word_arr = np_word_arr[:max_word]
+        else:
+            np_word_arr += [np.zeros((1, 300))] * (max_word - len(np_word_arr))
+
+        # Get the handle and the hash tag data together
+        handle = np.zeros((1, handle_num))
+        hash_tag = np.zeros((1, hash_tag_num))
+
+        # Gets the handle, one hot encoding
+        if handles[idx] is not None:
+            handle[0, handles[idx]] = 1
+
+        # Add the hash tags
+        for hashtag in hashtag_arr[idx]:
+            hash_tag[0, hashtag] = 1
+
+        int_wordarr.append(np.expand_dims(np.concatenate(np_word_arr,axis=0),axis=0))
+        int_hashtags.append(hash_tag), int_handles.append(handle)
+    # Final output prep
+    np_wordarr = np.expand_dims(np.concatenate(int_wordarr,axis=0),axis=0)
+    np_hashtags = np.expand_dims(np.concatenate(int_hashtags,axis=0),axis=0)
+    np_handles = np.expand_dims(np.concatenate(int_handles,axis=0),axis=0)
+    logging.debug('Handles shape: {}, HashTags: {}, WordArr: {}'.format(np_handles.shape, np_hashtags.shape, np_wordarr.shape))
+    logging.info('Got input for neural network')
+    return [np_wordarr,np_hashtags,np_handles]
+
+if __name__ == '__main__':
+    logging.basicConfig(level='DEBUG')
+    get_prices("data/prices.txt")
+    main_pkl("data/tweets_raw.txt", "data/process_dat.pkl")
+
+    make_dict_pickle("data/process_dat.pkl", "data/word_dict.pkl")
+    make_wordvec_dict("data/word_dict.pkl", "data/wordvectors.pkl", 20)
+    make_main_process_pkl(prices_fname="data/prices.txt", word_pkl="data/process_dat.pkl",
+                          hashtag_fname="data/hashtag_200.txt", handle_fname="data/handle_200.txt",
+                          out_fname="data/processed_readynn.pkl")
+    make_splits(input_pkl='data/processed_readynn.pkl', test_split=0.1, val_split=0.1)
+    # prod_clean(load_pickle("new.pkl")['dat'])
+
+### PLOTTER
+    # handle_analyzer("data/process_dat.pkl", "data/handle_stats.png", 'data/handle_stats.txt')
+    # hashtag_analyzer("data/process_dat.pkl", "data/hashtag_stats.png", 'data/hashtag_stats.txt')
